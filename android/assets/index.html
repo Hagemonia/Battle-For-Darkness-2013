@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Battle for Darkness</title>
+<style>
+  html, body { margin:0; height:100%; background:#000; overflow:hidden; touch-action:none;
+               -webkit-user-select:none; user-select:none; -webkit-tap-highlight-color:transparent; }
+  #box { position:fixed; display:flex; align-items:center; justify-content:center; background:#000;
+         top:env(safe-area-inset-top,0px); bottom:env(safe-area-inset-bottom,0px);
+         left:env(safe-area-inset-left,0px); right:env(safe-area-inset-right,0px); }
+  #bar { position:fixed; z-index:20; top:6px; right:calc(env(safe-area-inset-right,0px) + 6px); display:flex; gap:6px; }
+  .chip { width:36px; height:36px; border-radius:50%; background:rgba(255,255,255,.18); color:#fff;
+          font:18px/36px sans-serif; text-align:center; opacity:.55; }
+  #panel { position:fixed; z-index:30; top:48px; right:calc(env(safe-area-inset-right,0px) + 6px); display:none;
+           background:rgba(0,0,0,.88); color:#fff; font:13px/1.3 sans-serif; padding:10px 12px; border-radius:12px;
+           border:1px solid rgba(255,255,255,.25); max-width:300px; }
+  #panel.on { display:block; }
+  #panel .row { margin-bottom:10px; } #panel .t { opacity:.75; margin-bottom:4px; }
+  #panel .opts { display:flex; gap:6px; }
+  .opt { padding:7px 10px; border-radius:8px; background:rgba(255,255,255,.14); border:1px solid transparent; }
+  .opt.sel { background:rgba(120,170,255,.45); border-color:rgba(160,200,255,.8); }
+  #panel .note { opacity:.6; font-size:11px; }
+  #pad { position:fixed; inset:0; z-index:10; pointer-events:none; display:none; }
+  #pad.on { display:block; }
+  .btn { position:absolute; pointer-events:auto; touch-action:none; border-radius:50%;
+         background:rgba(255,255,255,.16); border:2px solid rgba(255,255,255,.35); color:#fff;
+         font:bold 15px/1 sans-serif; display:flex; align-items:center; justify-content:center; }
+  .btn.down { background:rgba(255,255,255,.45); }
+  .dp { width:64px; height:64px; border-radius:14px; font-size:26px; }
+  .ac { width:68px; height:68px; }
+</style>
+<script>
+  // Runs before ruffle.js: graphics preset (render resolution + anti-aliasing) and Ruffle config.
+  (function () {
+    var g = null; try { g = localStorage.getItem("gfx"); } catch (e) {}
+    if (g !== "mid" && g !== "sharp") g = "fast";
+    var real = window.devicePixelRatio || 1;
+    var cap = { fast: 1, mid: 1.5, sharp: 100 }[g];
+    try { Object.defineProperty(window, "devicePixelRatio", { get: function () { return Math.min(real, cap); }, configurable: true }); } catch (e) {}
+    window.__gfx = g;
+    window.RufflePlayer = window.RufflePlayer || {};
+    window.RufflePlayer.config = {
+      autoplay: "on", unmuteOverlay: "hidden", splashScreen: false, letterbox: "on",
+      warnOnUnsupportedContent: false, contextMenu: "off", showSwfDownload: false,
+      openUrlMode: "deny",                       // block every link/redirect the game tries to open
+      scale: "exactFit", forceScale: true,       // stage stretches to the size of the player element
+      quality: g === "sharp" ? "high" : "medium",
+      backgroundColor: "#000000"
+    };
+  })();
+</script>
+<script src="ruffle.js"></script>
+</head>
+<body>
+<div id="box"></div>
+<div id="bar"><div id="gear" class="chip">&#9881;</div><div id="toggle" class="chip">&#127918;</div></div>
+<div id="panel"></div>
+<div id="pad"></div>
+
+<script>
+(function () {
+  const LS = {
+    get(k, d) { try { return localStorage.getItem(k) || d; } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  };
+  const box = document.getElementById("box");
+  const ruffle = window.RufflePlayer.newest();
+  const player = ruffle.createPlayer();
+  box.appendChild(player);
+  player.load({ url: "game.swf" });
+
+  // ---- Screen size: full (stretch), wide (slight stretch), fit (original aspect) ----
+  const ASP = 800 / 550;
+  let mode = LS.get("mode", "full");
+  if (mode !== "wide" && mode !== "fit") mode = "full";
+  function layout() {
+    const vw = box.clientWidth, vh = box.clientHeight;
+    let w = vw, h = vh;
+    if (mode === "wide") { w = Math.min(vw, vh * ASP * 1.3); }
+    else if (mode === "fit") { h = vh; w = h * ASP; if (w > vw) { w = vw; h = w / ASP; } }
+    player.style.width = Math.round(w) + "px";
+    player.style.height = Math.round(h) + "px";
+  }
+  layout();
+  window.addEventListener("resize", layout);
+
+  // ---- Settings panel ----
+  const panel = document.getElementById("panel");
+  function row(title, opts, cur, pick) {
+    const r = document.createElement("div"); r.className = "row";
+    const t = document.createElement("div"); t.className = "t"; t.textContent = title; r.appendChild(t);
+    const o = document.createElement("div"); o.className = "opts"; r.appendChild(o);
+    opts.forEach(([val, label]) => {
+      const b = document.createElement("div"); b.className = "opt" + (val === cur ? " sel" : ""); b.textContent = label;
+      b.addEventListener("click", () => pick(val)); o.appendChild(b);
+    });
+    panel.appendChild(r);
+  }
+  function renderPanel() {
+    panel.innerHTML = "";
+    row("Layar", [["full", "Penuh"], ["wide", "Lebar"], ["fit", "Asli"]], mode, v => {
+      mode = v; LS.set("mode", v); layout(); window.dispatchEvent(new Event("resize")); renderPanel();
+    });
+    row("Grafik", [["fast", "Cepat"], ["mid", "Seimbang"], ["sharp", "Tajam"]], window.__gfx, v => {
+      if (v !== window.__gfx) { LS.set("gfx", v); location.reload(); }
+    });
+    const n = document.createElement("div"); n.className = "note";
+    n.textContent = "Mengganti grafik memuat ulang game. Pilih Cepat jika patah-patah."; panel.appendChild(n);
+  }
+  renderPanel();
+  document.getElementById("gear").addEventListener("click", () => panel.classList.toggle("on"));
+
+  // ---- Optional on-screen keys. Game's own help: pause = [P] or [Escape]; everything else is tap/drag ----
+  const KEYS = {
+    Left:{key:"ArrowLeft",code:"ArrowLeft",kc:37}, Right:{key:"ArrowRight",code:"ArrowRight",kc:39},
+    Space:{key:" ",code:"Space",kc:32}, P:{key:"p",code:"KeyP",kc:80}, Esc:{key:"Escape",code:"Escape",kc:27}
+  };
+  function fire(type, k) {
+    const ev = new KeyboardEvent(type, { key:k.key, code:k.code, keyCode:k.kc, which:k.kc,
+                                         bubbles:true, cancelable:true, composed:true });
+    player.focus();
+    player.dispatchEvent(ev);
+  }
+  const pad = document.getElementById("pad");
+  function mk(label, cls, style, k) {
+    const b = document.createElement("div");
+    b.className = "btn " + cls; b.textContent = label;
+    Object.assign(b.style, style);
+    const active = new Set();
+    b.addEventListener("pointerdown", e => {
+      e.preventDefault(); b.setPointerCapture(e.pointerId);
+      active.add(e.pointerId); b.classList.add("down"); fire("keydown", k);
+    });
+    const up = e => {
+      if (!active.delete(e.pointerId)) return;
+      if (!active.size) b.classList.remove("down"); fire("keyup", k);
+    };
+    b.addEventListener("pointerup", up); b.addEventListener("pointercancel", up);
+    pad.appendChild(b);
+  }
+  const L = "calc(env(safe-area-inset-left, 0px) + 18px)";
+  const R = "calc(env(safe-area-inset-right, 0px) + 18px)";
+  mk("\u25C0","dp",{left:L,                   bottom:"18px"}, KEYS.Left);
+  mk("\u25B6","dp",{left:`calc(${L} + 74px)`, bottom:"18px"}, KEYS.Right);
+  mk("P","ac",{right:R,                       bottom:"18px"}, KEYS.P);
+  mk("SPACE","ac",{right:`calc(${R} + 76px)`, bottom:"18px"}, KEYS.Space);
+  mk("ESC","ac",{right:`calc(${R} + 152px)`,  bottom:"18px"}, KEYS.Esc);
+
+  const toggle = document.getElementById("toggle");
+  let on = LS.get("pad", "0") === "1";
+  const apply = () => pad.classList.toggle("on", on);
+  apply();
+  toggle.addEventListener("click", () => { on = !on; apply(); LS.set("pad", on ? "1" : "0"); });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+# build output and downloads
+build/
+dist/
+cache/
+# secrets: signing key
+keystore/
+*.keystore
+*.jks
+# the game itself is not part of this repo
+game/*.swf
+*.apk
+*.exe
